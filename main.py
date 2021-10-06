@@ -4,6 +4,7 @@ import re
 import itertools
 import kivy
 from kivy.uix.gridlayout import GridLayout
+from kivy.graphics.vertex_instructions import Rectangle
 from kivy.app import App
 from kivy.uix.label import Label
 from kivy.uix.dropdown import DropDown
@@ -33,17 +34,27 @@ urls = {
 
 class Scraper(GridLayout):
 
-        def __init__(self,urls, headers, **kwargs):
+        def __init__(self,urls, headers, images, **kwargs):
                 super(Scraper, self).__init__(**kwargs)
 
+                ##Получаю URLs и заголовки
                 self.urls = urls
                 self.headers = headers
 
+                #Добавляю словарь с картинками и начальный фон
+                self.images = images
+                self.standart_image = 'standart.png'
 
+
+                ## Настройка начального фона для экрана
+                with self.canvas:
+                        self.rect = Rectangle(source=self.standart_image, pos=[0, 0], size=[800, 600])
+
+                ##Указываю количество колонок на LayOut
                 self.cols = 2
 
                 #Создание всех кнопок
-                self.Main_Label = Label(text='Hello', font_size=60)
+                self.Main_Label = Label(text='Weather', font_size=60)
                 self.mainbutton = Button(text='Select day', size_hint=(None, None), height=50)
                 self.button_regions = Button(text='Select region', size_hint=(None, None), height=50)
 
@@ -51,10 +62,11 @@ class Scraper(GridLayout):
                 self.add_widget(self.mainbutton)
                 self.add_widget(self.button_regions)
                 self.add_widget(self.Main_Label)
-                ##self.add_widget(self.request_button)
 
                 ##Словарь для информации о погоде
                 self.data = dict()
+                self.picture = dict()
+
                 try:
 
                         # Создаю выпадающее меню выбора даты
@@ -80,6 +92,7 @@ class Scraper(GridLayout):
 
                 except Exception as Ex:
                         self.Except = Ex
+                        print(Ex)
                         self.Main_Label.text = 'Some Error, try later :('
 
         #Добавляем кнопки к выпадающему меню
@@ -87,6 +100,7 @@ class Scraper(GridLayout):
                 for day in self.days:
                         btn = Button(text=f'{day}', size_hint_y=None, font_size=14, height=55)
                         btn.bind(on_release=lambda btn: self.dropdown.select(btn.text))
+                        btn.bind(on_release=lambda btn: setattr(self.rect, 'source', self.picture.get(btn.text)))
                         self.dropdown.add_widget(btn)
 
 
@@ -94,7 +108,9 @@ class Scraper(GridLayout):
         def get_request(self, url):
                 try:
                         self.data_html = requests.get(url, headers=self.headers).text
+
                         self.soup = BeautifulSoup(self.data_html, 'lxml')
+
                         self.scrap_days()
                         self.scrap_weather()
                         self.scrap_wind()
@@ -105,55 +121,77 @@ class Scraper(GridLayout):
                         for weather, day, wind, day_temp, night_temp in zip(self.weather, self.days, self.wind,
                                                                             self.day_temperature,
                                                                             self.night_temperature):
+                                sep ='\n'
+                                rest = weather.split(sep, 1)[0]
+                                print(rest)
+                                self.picture.update({f'{day}': self.images[rest]})
                                 self.data.update({f'{day}': [weather, 'Дневная tC:' + f'{day_temp}',
                                                              'Ночная tC:' + f'{night_temp}',
                                                              'Скорость ветра:' + f'{wind}']})
-
                 except Exception as Ex:
                         self.Except = Ex
+                        print(Ex)
                         self.Main_Label.text = 'Some Error, try later :('
 
         # Вывожу данные в UI
         def print_data(self, dt):
                 temp_str=''
                 try:
+
                         for inf in self.data.get(self.mainbutton.text):
                                 temp_str += f'\n{inf}'
                         self.Main_Label.text = temp_str
+
                 except Exception as ex:
                         return
 
         ##Получаем список дат
         def scrap_days(self):
-                days = self.soup.find('div', class_='widget__body').find_all('span', class_='w_date__date')
-                self.days = [re.sub(r'[ \n]', '', x.text) for x in days]
-                return self.days
-
+                try:
+                        days = self.soup.find('div',class_='widget-row-days-date').find_all('div', class_='date')
+                        self.days = [re.sub(r'[ \n]', '', x.text) for x in days]
+                        return self.days
+                except:
+                        print('scrap_days')
         # Получаем общие комментарии о погоде
         def scrap_weather(self):
-                weather = self.soup.find_all('span', class_='tooltip')
-                self.weather = [re.sub(r', ', '\n', x.get('data-text')) for x in weather]
-                return self.weather
-
+                try:
+                        #weather = self.soup.find_all('span', class_='tooltip')
+                        weather = self.soup.find_all('div', class_='tooltip')
+                        self.weather = [re.sub(r', ', '\n', x.get('data-text')) for x in weather]
+                        return self.weather
+                except:
+                        print('scrap_weather')
         # Данные о температуре
         def scrap_temperature(self):
-                temp_soup_day = self.soup.find('div', class_='templine w_temperature').find_all('div', class_='maxt')
-                self.day_temperature = [x.find('span').text for x in temp_soup_day]
-                temp_soup_night = self.soup.find('div', class_='templine w_temperature').find_all('div', class_='mint')
-                self.night_temperature = [x.find('span').text for x in temp_soup_night]
+                try:
+                        temp_soup_day = self.soup.find('div', class_='widget-row-chart-temperature').find_all('div', class_='maxt')
+                        self.day_temperature = [x.find('span').text for x in temp_soup_day]
+                        temp_soup_night = self.soup.find('div', class_='widget-row-chart-temperature').find_all('div', class_='mint')
+                        self.night_temperature = [x.find('span').text for x in temp_soup_night]
 
-                return {'day': self.day_temperature, 'night': self.night_temperature}
-
+                        return {'day': self.day_temperature, 'night': self.night_temperature}
+                except:
+                        print('scrap_tempr')
         # Скорость ветра
         def scrap_wind(self):
-                wind = self.soup.find('div', class_='widget__row_wind-or-gust').find_all('span', class_='unit_wind_m_s')
-                self.wind = [re.sub(r'[ \n]', '', x.text) for x in wind]
-                return self.wind
+                try:
+                        #wind = self.soup.find('div', class_='widget__row_wind-or-gust').find_all('span', class_='unit_wind_m_s')
+                        wind = self.soup.find('div', class_='widget-row-wind-gust').find_all('span',class_='unit_wind_m_s')
 
+                        self.wind = [re.sub(r'[ \n]', '', x.text) for x in wind]
+
+                        return self.wind
+                except:
+                        print('scrap_wind')
 
 class WeatherApp(App):
         def build(self):
-                scraper = Scraper(urls=urls, headers=headers)
+                scraper = Scraper(urls=urls, headers=headers, images={'Ясно': 'sun.png',
+                                                                      'Облачно': 'cloud.png',
+                                                                      'Переменная облачность': 'cloud.png',
+                                                                      'Пасмурно': 'rain.png'})
+
                 Clock.schedule_interval(scraper.print_data, 1.0 / 60.0)
                 return scraper
 
